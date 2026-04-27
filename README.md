@@ -59,12 +59,12 @@ Optional. If present, the playground renders curated semantic controls; if absen
 ```json
 {
   "title": "My deck review",
-  "color_tokens":   [{"var": "--brand-primary", "default": "#000040", "label": "Primary"}],
-  "size_tokens":    [{"var": "--cover-title-size", "default": "104", "unit": "px", "min": 60, "max": 240, "label": "Title size"}],
-  "selects":        [{"id": "bg-mode", "label": "Background", "default": "navy",
-                       "options": [{"value": "navy", "label": "Navy", "css": {"--bg": "#000040"}},
-                                   {"value": "yellow", "label": "Yellow", "css": {"--bg": "#FFCC00"}}]}],
-  "element_tweaks": [{"selector": ".cover__title", "label": "Cover title",
+  "color_tokens":   [{"var": "--brand-primary", "default": "#5B8DEF", "label": "Primary"}],
+  "size_tokens":    [{"var": "--title-size", "default": "104", "unit": "px", "min": 60, "max": 240, "label": "Title size"}],
+  "selects":        [{"id": "bg-mode", "label": "Background", "default": "dark",
+                       "options": [{"value": "dark",  "label": "Dark",  "css": {"--bg": "#0F1118"}},
+                                   {"value": "light", "label": "Light", "css": {"--bg": "#F5F5F7"}}]}],
+  "element_tweaks": [{"selector": ".title", "label": "Title",
                        "props": ["font-size", "color", "font-weight", "letter-spacing"]}]
 }
 ```

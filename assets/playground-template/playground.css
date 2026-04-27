@@ -15,8 +15,11 @@
   --ink-mute:    #74747f;
   --ink-faint:   #4a4a55;
 
-  --accent:      #FFCC00;
-  --accent-soft: rgba(255, 204, 0, 0.14);
+  /* --accent is a neutral fallback. The JS layer overrides it at runtime with
+     the first color_token from the loaded tweaks.json so the playground
+     visually adapts to whatever design system it is reviewing. */
+  --accent:      #5B8DEF;
+  --accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
   --danger:      #ff5577;
   --pin:         #ff3344;
 

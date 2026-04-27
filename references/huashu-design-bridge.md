@@ -79,7 +79,7 @@ The `handoff.json` looks like:
 {
   "from": "huashu-design",
   "version": "v1",
-  "project_title": "Bravelabs · Refined Template",
+  "project_title": "Acme · Refined Template",
   "layouts": [
     {"id": "01-cover", "label": "Cover", "src": "./slides/01-cover.html"},
     {"id": "02-content", "label": "Content", "src": "./slides/02-content.html"}
@@ -96,31 +96,29 @@ When tweak-design's init script sees a `handoff.json` in the target directory, i
 
 **huashu-design's internal questioning** (what it would normally ask the user):
 
-1. "Cover background — navy texturizado or yellow flood?"
+1. "Cover background — dark or color-flood?"
 2. "Title size — 96pt (default) or 132pt (bolder)?"
-3. "Brand yellow — keep #FFCC00 or shift to a softer #F5C400?"
+3. "Brand primary — keep `#5B8DEF` or shift to a stronger `#3B6FD8`?"
 4. "Add a 'date' eyebrow above the title? (yes/no)"
 
 **Converted to tweaks.json:**
 
 ```json
 {
-  "title": "Bravelabs Cover · Open questions",
+  "title": "Cover · Open questions",
   "selects": [
     {
       "id": "cover-bg",
       "label": "Cover background",
-      "default": "navy",
+      "default": "dark",
       "ui": "segmented",
       "options": [
-        {"value": "navy",   "label": "Navy texturizado",
-         "css": {"--cover-bg-image": "url('./brand/bg-navy-texture.png')",
-                 "--cover-bg-color": "#000040",
+        {"value": "dark",  "label": "Dark",
+         "css": {"--cover-bg-color": "#0F1118",
                  "--cover-text": "white"}},
-        {"value": "yellow", "label": "Yellow flood",
-         "css": {"--cover-bg-image": "none",
-                 "--cover-bg-color": "#FFCC00",
-                 "--cover-text": "#000040"}}
+        {"value": "flood", "label": "Color flood",
+         "css": {"--cover-bg-color": "var(--brand-primary)",
+                 "--cover-text": "#0F1118"}}
       ]
     },
     {
@@ -129,8 +127,8 @@ When tweak-design's init script sees a `handoff.json` in the target directory, i
       "default": "yes",
       "ui": "segmented",
       "options": [
-        {"value": "yes", "label": "Sim", "css": {"--eyebrow-display": "block"}},
-        {"value": "no",  "label": "Não", "css": {"--eyebrow-display": "none"}}
+        {"value": "yes", "label": "Yes", "css": {"--eyebrow-display": "block"}},
+        {"value": "no",  "label": "No",  "css": {"--eyebrow-display": "none"}}
       ]
     }
   ],
@@ -138,7 +136,7 @@ When tweak-design's init script sees a `handoff.json` in the target directory, i
     {"var": "--cover-title-size", "default": "96", "unit": "px", "min": 80, "max": 160, "step": 4, "label": "Cover title size"}
   ],
   "color_tokens": [
-    {"var": "--brave-yellow", "default": "#FFCC00", "label": "Brave Yellow"}
+    {"var": "--brand-primary", "default": "#5B8DEF", "label": "Brand primary"}
   ]
 }
 ```
@@ -147,11 +145,11 @@ The user opens tweak-design, sees these 4 controls, plays with them live, and th
 
 ```
 ## Tweaks (changed from default)
-- `cover-bg`: navy → yellow
+- `cover-bg`: dark → flood
 - `--cover-title-size`: 96px → 128px
 - `show-eyebrow`: yes → no
 
-(--brave-yellow unchanged)
+(--brand-primary unchanged)
 ```
 
 huashu-design then applies these as the "answered questions" and proceeds with the batch generation of the remaining slides locked to those choices.

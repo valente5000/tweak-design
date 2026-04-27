@@ -103,6 +103,13 @@ async function boot() {
   if (!state.tweaksDef) state.tweaksDef = await autoDetect(state.layouts[0].src);
   state.defaults = computeDefaults(state.tweaksDef);
 
+  // Adopt the design system's accent for the playground UI itself.
+  // No hardcoded brand color — the tool inherits the look of the design it reviews.
+  const firstColor = (state.tweaksDef.color_tokens || [])[0];
+  if (firstColor?.default) {
+    document.documentElement.style.setProperty('--accent', firstColor.default);
+  }
+
   const saved = restoreSession();
   if (saved) {
     state.tweakValues = saved.tweakValues || state.tweakValues;
@@ -137,42 +144,56 @@ function showFatalError(msg) {
   }, [
     make('div', { style: { maxWidth: '600px' } }, [
       make('div', { style: { fontSize: '13px', letterSpacing: '0.16em',
-                             textTransform: 'uppercase', color: '#FFCC00',
+                             textTransform: 'uppercase', color: 'var(--accent, #5B8DEF)',
                              marginBottom: '24px' } }, 'tweak-design · error'),
       make('div', { style: { fontSize: '18px', lineHeight: '1.5' } }, msg),
     ]),
   ]));
 }
 
-/* ── Auto-detection ─────────────────────────────────────────────── */
+/* ── Auto-detection (frequency-ranked fallback) ─────────────────── */
+/* When no tweaks.json is provided, we scan the loaded HTML for CSS custom
+   properties and rank them by how often they're REFERENCED via var(--x).
+   Most-referenced = most load-bearing = most worth exposing. We surface the
+   top N. This is a fallback — the design-creator skill (huashu-design etc.)
+   should normally declare tweaks.json with curated controls. */
 async function autoDetect(src) {
   try {
     const r = await fetch(src, { cache: 'no-store' });
     if (!r.ok) return {};
     const html = await r.text();
-    const colorRe = /(--[a-z0-9-]+)\s*:\s*(#[0-9a-fA-F]{3,8})\s*;/g;
-    const sizeRe  = /(--[a-z0-9-]+)\s*:\s*([\d.]+)\s*(px|em|rem|%|deg|vh|vw)\s*;/g;
-    const colorTokens = [], sizeTokens = [], seen = new Set();
-    for (const m of html.matchAll(colorRe)) {
-      if (seen.has(m[1])) continue;
-      seen.add(m[1]);
-      colorTokens.push({ var: m[1], default: m[2], label: humanize(m[1]), group: 'auto' });
+    const declRe   = /(--[a-z0-9-]+)\s*:\s*([^;}\n]+)\s*[;}]/g;
+    const refRe    = /var\(\s*(--[a-z0-9-]+)/g;
+    const refCount = new Map();
+    for (const m of html.matchAll(refRe)) refCount.set(m[1], (refCount.get(m[1]) || 0) + 1);
+    const decls = new Map();
+    for (const m of html.matchAll(declRe)) {
+      if (!decls.has(m[1])) decls.set(m[1], m[2].trim());
     }
-    for (const m of html.matchAll(sizeRe)) {
-      if (seen.has(m[1])) continue;
-      seen.add(m[1]);
-      const val = parseFloat(m[2]);
-      sizeTokens.push({
-        var: m[1], default: m[2], unit: m[3], label: humanize(m[1]),
-        min: 0, max: Math.max(val * 3, val + 100), step: m[3] === 'px' ? 1 : 0.05,
-        group: 'auto',
-      });
+    const colorTokens = [], sizeTokens = [];
+    for (const [name, raw] of decls) {
+      const colorM = raw.match(/^(#[0-9a-fA-F]{3,8})$/);
+      const sizeM  = raw.match(/^(-?[\d.]+)\s*(px|em|rem|%|deg|vh|vw)$/);
+      const freq = refCount.get(name) || 0;
+      if (colorM) {
+        colorTokens.push({ var: name, default: colorM[1], label: humanize(name), group: 'auto', _freq: freq });
+      } else if (sizeM) {
+        const val = parseFloat(sizeM[1]);
+        sizeTokens.push({
+          var: name, default: sizeM[1], unit: sizeM[2], label: humanize(name),
+          min: 0, max: Math.max(val * 3, val + 100), step: sizeM[2] === 'px' ? 1 : 0.05,
+          group: 'auto', _freq: freq,
+        });
+      }
     }
+    // Rank by frequency (most-referenced first), then by name. Take top 12 each.
+    const byFreq = (a, b) => (b._freq - a._freq) || a.var.localeCompare(b.var);
+    const top = (arr) => arr.sort(byFreq).slice(0, 12).map(({ _freq, ...t }) => t);
     return {
-      title: 'Auto-detected tokens',
-      color_tokens: colorTokens,
-      size_tokens: sizeTokens,
-      groups: [{ id: 'auto', label: 'Auto-detected' }],
+      title: 'Auto-detected tokens (ranked by usage frequency)',
+      color_tokens: top(colorTokens),
+      size_tokens: top(sizeTokens),
+      groups: [{ id: 'auto', label: 'Auto-detected · top by usage' }],
     };
   } catch (_) { return {}; }
 }

@@ -144,7 +144,7 @@ Full schema in `references/tweaks-manifest-spec.md`. Quick example:
 ```json
 {
   "color_tokens": [
-    {"var": "--brave-yellow", "default": "#FFCC00", "label": "Brave Yellow"}
+    {"var": "--brand-primary", "default": "#5B8DEF", "label": "Brand primary"}
   ],
   "size_tokens": [
     {"var": "--cover-title-size", "default": "104", "unit": "px", "min": 60, "max": 240, "label": "Cover title size"}
@@ -155,10 +155,10 @@ Full schema in `references/tweaks-manifest-spec.md`. Quick example:
       "label": "Cover background",
       "applies_to": ["01-cover.html"],
       "options": [
-        {"value": "navy", "label": "Navy", "css": {"--cover-bg": "#000040", "--cover-text": "white"}},
-        {"value": "yellow", "label": "Yellow", "css": {"--cover-bg": "#FFCC00", "--cover-text": "#000040"}}
+        {"value": "dark",  "label": "Dark",  "css": {"--cover-bg": "#0F1118", "--cover-text": "white"}},
+        {"value": "light", "label": "Light", "css": {"--cover-bg": "#F5F5F7", "--cover-text": "#0F1118"}}
       ],
-      "default": "navy"
+      "default": "dark"
     }
   ]
 }
@@ -181,6 +181,18 @@ When the user finishes comparing in split mode and wants to apply tweaks to just
 Annotations only register when **inspect mode is OFF**. Toggle inspect with the 🎯 button or `i` shortcut.
 
 Each annotation is editable in the sidebar list. All annotations + tweaks auto-save to localStorage on every change. The "Save .json" button writes a portable `session.json` that survives across browsers and machines.
+
+## Defaults: ask the designer first, measure as fallback, never invent
+
+tweak-design has **no opinions** of its own about which design tokens or which elements should be tweakable. Picking those is a design-system decision, not a tool decision. The order of trust is:
+
+1. **(Best) Ask the design-creator skill.** If the layouts came from a design-creator skill (e.g., `huashu-design`), that skill should declare a `tweaks.json` listing the meaningful color tokens, size tokens, selects, and `element_tweaks` (which selectors are worth exposing in the inspector and which CSS props are meaningful for each). Before opening the playground for layouts produced by another skill, prefer to invoke that skill to author or refresh the manifest. The design-creator knows what matters; tweak-design doesn't.
+2. **(Fallback) Measure the loaded HTML.** When no `tweaks.json` is present and there's no design-creator skill to ask, scan the layouts for CSS custom properties and **rank them by reference frequency** (`var(--x)` count across all loaded HTML). Top N are surfaced as auto-detected tokens. For element_tweaks fallback: pick elements with the highest density of inline/embedded CSS rules (most-styled = most-designed = most-relevant to expose).
+3. **(Last resort) Generic neutral controls.** Only when neither (1) nor (2) yields useful signal, fall back to a tiny neutral default set (font-size, color, padding) on a single placeholder selector — clearly labeled as fallback so the user knows the tool is guessing.
+
+**Never** inject specific brand colors, brand names, or pre-baked design opinions. The playground UI's own accent color is also derived from the loaded design's first color token at runtime — the tool wears the design system it is reviewing, not the other way around.
+
+If the user asks for the playground without a manifest AND a design-creator skill is detectable, surface that as a suggestion before falling back to (2): _"This deck looks like it came from huashu-design. Want me to ask huashu-design to declare which tokens/elements matter before we open? Otherwise I'll auto-rank by frequency."_
 
 ## Per-layout scoping (v2 default)
 
@@ -208,18 +220,16 @@ Element overrides also follow per-layout scoping (they default to "this layout o
 - Single-file static HTML editing without comparison/review intent (just use Edit)
 - Print/PDF generation (use the parent skill's export scripts)
 
-## Testing the skill on real output
+## Self-test
 
-For a smoke test, point it at the Bravelabs cover variants:
+The skill ships with a tiny self-test in `assets/playground-template/_example/`. From a fresh shell:
+
 ```bash
-python /Users/valente/.claude/skills/tweak-design/scripts/init-playground.py \
-  --project /Users/valente/code/bravelabs-deck-refined \
-  --layouts /Users/valente/code/bravelabs-deck-refined/slides/01-cover*.html
-cd /Users/valente/code/bravelabs-deck-refined/playground
-python server.py
+cd /Users/valente/.claude/skills/tweak-design/assets/playground-template/_example
+python ../server.py
 ```
 
-This loads the 4 cover variants from the parked Bravelabs deck decision (V1 Bold Lab, V2 Editorial, V3 Yellow Flood, V4 Asymmetric) and lets the user pick one + tweak it before the next iteration.
+Browser opens at `http://127.0.0.1:7860/playground/playground.html` with two synthetic demo HTMLs and a tweaks.json wired up. Use it to verify the install before pointing at real work. The example deliberately uses placeholder colors (`#5B8DEF`) and generic class names (`.title`, `.subtitle`) — no real brand contamination.
 
 ## File index
 

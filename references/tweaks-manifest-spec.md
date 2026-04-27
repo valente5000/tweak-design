@@ -34,9 +34,9 @@ A CSS color variable that becomes a color picker + hex input in the sidebar.
 
 ```json
 {
-  "var": "--brave-yellow",            // required, the CSS custom property name
-  "default": "#FFCC00",                // required, the canonical default
-  "label": "Brave Yellow",             // required, human-readable label
+  "var": "--brand-primary",            // required, the CSS custom property name
+  "default": "#5B8DEF",                // required, the canonical default
+  "label": "Brand primary",            // required, human-readable label
   "applies_to": ["01-cover.html"],     // optional; if absent, applies globally to all layouts
   "group": "Brand colors",             // optional; for sidebar grouping
   "description": "Primary accent"      // optional tooltip text
@@ -45,7 +45,7 @@ A CSS color variable that becomes a color picker + hex input in the sidebar.
 
 Behavior in playground:
 - Renders as: label + 32px swatch (color picker) + hex input
-- Live updates: on change, posts `{type: 'tweak:apply', vars: {'--brave-yellow': '#FFD700'}}` to scope iframes
+- Live updates: on change, posts `{type: 'tweak:apply', vars: {'--brand-primary': '#3B6FD8'}}` to scope iframes
 - Reset icon shown only when value differs from default
 
 ## SizeToken
@@ -86,19 +86,19 @@ A multi-option control where each option maps to a set of CSS variable changes (
       "value": "navy",
       "label": "Navy",
       "css": {                         // CSS variables to apply when this option is active
-        "--cover-bg": "#000040",
+        "--cover-bg": "#0F1118",
         "--cover-text": "white"
       },
-      "preview_color": "#000040"        // optional; rendered as a color dot in the option button
+      "preview_color": "#0F1118"        // optional; rendered as a color dot in the option button
     },
     {
-      "value": "yellow",
-      "label": "Yellow",
+      "value": "light",
+      "label": "Light",
       "css": {
-        "--cover-bg": "#FFCC00",
-        "--cover-text": "#000040"
+        "--cover-bg": "#F5F5F7",
+        "--cover-text": "#0F1118"
       },
-      "preview_color": "#FFCC00"
+      "preview_color": "#F5F5F7"
     }
   ]
 }
@@ -188,8 +188,8 @@ Then individual tokens reference the group by id via the `group` field.
 
 The export prompt only includes tweaks where `current_value !== default`. The diff is calculated against the manifest defaults, not against the layout's CSS file. This means:
 - If the user opens the playground, changes nothing, and exports — the export shows "no tweaks changed"
-- If they change `--brave-yellow` from #FFCC00 to #FFD700 — export shows that diff
-- For selects: if `default: "navy"` and they switch to "yellow", export shows `cover-bg: navy → yellow`
+- If they change `--brand-primary` from #5B8DEF to #3B6FD8 — export shows that diff
+- For selects: if `default: "dark"` and they switch to "light", export shows `cover-bg: dark → light`
 
 ## Auto-detection (no manifest)
 
@@ -205,14 +205,14 @@ If `tweaks.json` is absent or fetch fails, the playground:
 
 This works for any HTML deck/prototype without prep, but a hand-written `tweaks.json` always produces a better UX.
 
-## Example: full manifest for the Bravelabs covers
+## Example: full manifest (synthetic project)
 
 ```json
 {
-  "title": "Bravelabs Cover · Variants",
+  "title": "Acme Pitch Deck · Cover Variants",
   "color_tokens": [
-    {"var": "--brave-navy",   "default": "#000040", "label": "Brave Navy",   "group": "brand"},
-    {"var": "--brave-yellow", "default": "#FFCC00", "label": "Brave Yellow", "group": "brand"}
+    {"var": "--brand-primary", "default": "#5B8DEF", "label": "Brand primary", "group": "brand"},
+    {"var": "--brand-ink",     "default": "#0F1118", "label": "Brand ink",     "group": "brand"}
   ],
   "size_tokens": [
     {"var": "--gutter", "default": "120", "unit": "px", "min": 60, "max": 200, "label": "Page gutter", "group": "layout"}
@@ -224,10 +224,10 @@ This works for any HTML deck/prototype without prep, but a hand-written `tweaks.
       "default": "v1",
       "ui": "segmented",
       "options": [
-        {"value": "v1", "label": "Bold Lab",     "preview_color": "#000040"},
-        {"value": "v2", "label": "Editorial",    "preview_color": "#000040"},
-        {"value": "v3", "label": "Yellow Flood", "preview_color": "#FFCC00"},
-        {"value": "v4", "label": "Asymmetric",   "preview_color": "#F5F2EA"}
+        {"value": "v1", "label": "Bold",        "preview_color": "#0F1118"},
+        {"value": "v2", "label": "Editorial",   "preview_color": "#0F1118"},
+        {"value": "v3", "label": "Color flood", "preview_color": "#5B8DEF"},
+        {"value": "v4", "label": "Quiet",       "preview_color": "#F5F5F7"}
       ]
     }
   ],
@@ -237,3 +237,5 @@ This works for any HTML deck/prototype without prep, but a hand-written `tweaks.
   ]
 }
 ```
+
+> **No real brand colors here.** The example above uses synthetic placeholder values (`#5B8DEF` blue, `#0F1118` near-black) so users borrowing this template don't accidentally inherit a third party's brand. Replace with the actual design system's tokens from your project.
