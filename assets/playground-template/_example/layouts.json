@@ -1,0 +1,8 @@
+{
+  "title": "Demo · tweak-design self-test",
+  "layouts": [
+    {"id": "demo-a", "label": "Demo A — Cover", "src": "./demo-a.html"},
+    {"id": "demo-b", "label": "Demo B — Big Number", "src": "./demo-b.html"}
+  ],
+  "tweaks_manifest": "./tweaks.json"
+}

@@ -1,0 +1,30 @@
+{
+  "title": "Demo controls",
+  "color_tokens": [
+    {"var": "--demo-bg",     "default": "#0a0a23", "label": "Background", "group": "color"},
+    {"var": "--demo-accent", "default": "#FFCC00", "label": "Accent",     "group": "color"},
+    {"var": "--demo-text",   "default": "#ffffff", "label": "Text",       "group": "color"}
+  ],
+  "size_tokens": [
+    {"var": "--demo-title-size", "default": "120", "unit": "px", "min": 60, "max": 240, "label": "Title size", "group": "type"},
+    {"var": "--demo-padding",    "default": "80",  "unit": "px", "min": 40, "max": 200, "label": "Padding",    "group": "layout"}
+  ],
+  "selects": [
+    {
+      "id": "demo-align",
+      "label": "Alignment",
+      "default": "left",
+      "ui": "segmented",
+      "options": [
+        {"value": "left",   "label": "Left",   "css": {"--demo-align": "flex-start", "--demo-text-align": "left"}},
+        {"value": "center", "label": "Center", "css": {"--demo-align": "center",     "--demo-text-align": "center"}},
+        {"value": "right",  "label": "Right",  "css": {"--demo-align": "flex-end",   "--demo-text-align": "right"}}
+      ]
+    }
+  ],
+  "groups": [
+    {"id": "color",  "label": "Color",     "order": 1},
+    {"id": "type",   "label": "Type",      "order": 2},
+    {"id": "layout", "label": "Layout",    "order": 3}
+  ]
+}
