@@ -20,6 +20,28 @@
         {"value": "center", "label": "Center", "css": {"--demo-align": "center",     "--demo-text-align": "center"}},
         {"value": "right",  "label": "Right",  "css": {"--demo-align": "flex-end",   "--demo-text-align": "right"}}
       ]
+    },
+    {
+      "id": "demo-decoration",
+      "label": "Title decoration (exercises `rule` field)",
+      "default": "none",
+      "ui": "segmented",
+      "options": [
+        {"value": "none",      "label": "None"},
+        {"value": "underline", "label": "Underline", "rule": ".title { text-decoration: underline wavy var(--demo-accent); text-underline-offset: 16px; text-decoration-thickness: 4px; }"},
+        {"value": "outline",   "label": "Outline",   "rule": ".title { -webkit-text-stroke: 2px var(--demo-accent); color: transparent; }"}
+      ]
+    },
+    {
+      "id": "demo-theme",
+      "label": "Theme (regression cover · select.css collides with color_token)",
+      "default": "dark",
+      "ui": "segmented",
+      "options": [
+        {"value": "dark",  "label": "Dark",  "css": {"--demo-bg": "#0F1118", "--demo-accent": "#5B8DEF", "--demo-text": "#FFFFFF"}},
+        {"value": "light", "label": "Light", "css": {"--demo-bg": "#F5F5F7", "--demo-accent": "#3B6FD8", "--demo-text": "#0F1118"}},
+        {"value": "warm",  "label": "Warm",  "css": {"--demo-bg": "#1F1A14", "--demo-accent": "#E8B95C", "--demo-text": "#F0E6CC"}}
+      ]
     }
   ],
   "element_tweaks": [
