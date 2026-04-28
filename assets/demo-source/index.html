@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>tweak-design — README video</title>
+<style>
+  html, body {
+    margin: 0; padding: 0;
+    background: #0a0a0a;
+    color: #fff;
+    overflow: hidden;
+    font-family: 'Inter', system-ui, sans-serif;
+    width: 100%; height: 100vh;
+  }
+  /* Fonts */
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:ital,wght@0,400;0,500;0,600;1,400;1,500&display=swap');
+  /* override TD_FONTS.serif via CSS variable trick: set on body */
+  body { font-family: 'Inter', system-ui, sans-serif; }
+  @keyframes tdClickPulse {
+    0%   { transform: scale(0.6); opacity: 0.6; }
+    100% { transform: scale(1.5); opacity: 0; }
+  }
+</style>
+<link rel="preload" as="image" href="shots/01-hero.webp"/>
+<link rel="preload" as="image" href="shots/02-two-pane.webp"/>
+<link rel="preload" as="image" href="shots/03-focus.webp"/>
+<link rel="preload" as="image" href="shots/04-annotations.webp"/>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" src="animations.jsx"></script>
+<script type="text/babel" src="scenes/common.jsx"></script>
+<script type="text/babel" src="scenes/scene1-open.jsx"></script>
+<script type="text/babel" src="scenes/scene2-hero.jsx"></script>
+<script type="text/babel" src="scenes/scene3-tweak.jsx"></script>
+<script type="text/babel" src="scenes/scene4-focus.jsx"></script>
+<script type="text/babel" src="scenes/scene5-annotate.jsx"></script>
+<script type="text/babel" src="scenes/scene6-export.jsx"></script>
+<script type="text/babel" src="scenes/scene7-claude.jsx"></script>
+<script type="text/babel" src="scenes/scene8-end.jsx"></script>
+
+<script type="text/babel">
+  // Override TD_FONTS.serif to use Source Serif 4 (free, editorial-feeling).
+  // Done after common.jsx loads.
+  setTimeout(() => {
+    if (window.TD_FONTS) {
+      window.TD_FONTS.serif = '"Source Serif 4", "Source Serif Pro", Georgia, serif';
+    }
+  }, 0);
+
+  function App() {
+    return (
+      <Stage width={1920} height={1080} duration={62} background="#0a0a0a" persistKey="tweakdesign-video">
+        <Scene1Open/>
+        <Scene2Hero/>
+        <Scene3Tweak/>
+        <Scene4Focus/>
+        <Scene5Annotate/>
+        <Scene6Export/>
+        <Scene7Claude/>
+        <Scene8End/>
+      </Stage>
+    );
+  }
+
+  // Wait one tick so all babel scripts register globals before mount.
+  setTimeout(() => {
+    ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+  }, 100);
+</script>
+
+</body>
+</html>
