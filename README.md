@@ -18,17 +18,9 @@ npx skills add valente5000/tweak-design
 
 ## Demo
 
-<a href="./assets/demo.mp4">
-  <img src="./assets/demo-poster.jpg" alt="tweak-design — 60-second cinematic walkthrough (click to play)" width="100%"/>
-</a>
+<video src="https://github.com/user-attachments/assets/338d5456-b718-439e-a57b-886758313a04" controls autoplay muted loop playsinline poster="./assets/demo-poster.jpg"></video>
 
-<sub>Click the poster — 1:02, 5.4 MB MP4. The walkthrough covers: terminal install → hero compare (3 layouts) → live token tweak → focus mode → inspect mode → pin & quadrant annotations → structured export prompt → Claude Code applying the diff.</sub>
-
-<!--
-  Inline auto-play on github.com requires uploading demo.mp4 to a draft issue
-  and replacing the <a>+<img> block above with:
-  <video src="https://github.com/user-attachments/assets/<uuid>" controls poster="./assets/demo-poster.jpg" muted></video>
--->
+<sub>1:02 cinematic walkthrough — terminal install → hero compare (3 layouts) → live token tweak → focus mode → inspect mode → pin & quadrant annotations → structured export prompt → Claude Code applying the diff. Source MP4 also lives at [`assets/demo.mp4`](./assets/demo.mp4) (5.4 MB).</sub>
 
 The video source — React + Babel scenes, animations, screenshots — lives in [`assets/demo-source/`](./assets/demo-source/); follow its [README](./assets/demo-source/README.md) to re-render with Playwright + ffmpeg.
 
