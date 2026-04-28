@@ -500,6 +500,7 @@ function applyDisplayMode(frame, paneIdx) {
 const SHIM_BODY = `(function(){
   var STYLE_ID = '__tweak_design_inject';
   var ELEM_ID  = '__tweak_design_elem';
+  var RULES_ID = '__tweak_design_rules';
   var HL_ID    = '__tweak_design_hl';
   var INSPECT_ID = '__tweak_design_inspect_style';
   var inspectOn = false;
@@ -519,6 +520,16 @@ const SHIM_BODY = `(function(){
   }
   function applyElementCss(css){
     var s = ensureStyle(ELEM_ID);
+    s.textContent = css || '';
+  }
+  /* Raw CSS rules from selects with the \`rule\` field. Documented in
+     references/tweaks-manifest-spec.md as the escape hatch when an option
+     needs more than CSS variable changes (toggle a body class, swap a
+     keyframes definition, scope a media query, etc). Kept in its own
+     style element so it composes with applyVars / applyElementCss
+     without precedence accidents. */
+  function applyRules(css){
+    var s = ensureStyle(RULES_ID);
     s.textContent = css || '';
   }
   function applyHighlight(selectors){
@@ -595,6 +606,7 @@ const SHIM_BODY = `(function(){
     var d = ev.data || {};
     if (d.type === 'tweak:apply'){ applyVars(d.vars || {}); }
     if (d.type === 'tweak:element-css'){ applyElementCss(d.css || ''); }
+    if (d.type === 'tweak:rules'){ applyRules(d.css || ''); }
     if (d.type === 'tweak:highlight'){
       if (d.coords){
         var sels = elementsAtRect(d.coords.x, d.coords.y, d.coords.w, d.coords.h);
@@ -648,6 +660,17 @@ function pushTweaksToPane(paneIdx) {
     else if (!(t.var in vars)) vars[t.var] = `${eff[t.var]}${t.unit || ''}`;
   }
   postShim(frame, { type: 'tweak:apply', vars });
+
+  /* Raw CSS rules from selects with `rule` field. Concatenate every
+     active option's rule into a single payload — the iframe shim writes
+     it to a dedicated <style id="__tweak_design_rules"> element. Empty
+     when no select declares `rule`, which is the common case. */
+  let rules = '';
+  for (const sel of (state.tweaksDef.selects || [])) {
+    const opt = sel.options.find(o => o.value === eff[sel.id]);
+    if (opt && opt.rule) rules += opt.rule + '\n';
+  }
+  postShim(frame, { type: 'tweak:rules', css: rules });
 }
 function pushElementsToPane(paneIdx) {
   const frame = state.paneFrames[paneIdx];
