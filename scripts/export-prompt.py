@@ -6,12 +6,21 @@ where you can't open the browser to copy from the modal.
 Usage:
   python export-prompt.py /path/to/session.json
   python export-prompt.py /path/to/session.json --out feedback.md
+
+Requires Python 3.10+.
 """
 
 import argparse
 import json
 import sys
 from pathlib import Path
+
+
+def _layout_label(layouts: list, lid: str) -> str:
+    for L in layouts:
+        if L.get("id") == lid:
+            return L.get("label") or lid
+    return lid
 
 
 def build_markdown(session: dict) -> str:
@@ -22,40 +31,69 @@ def build_markdown(session: dict) -> str:
     lines.append(f"_Generated:_ {session.get('exported_at') or '(no timestamp)'}")
     lines.append("")
 
+    layouts = session.get("layouts", [])
     defaults = session.get("defaults", {})
-    values = session.get("tweakValues", {})
+    tweak_values = session.get("tweakValues") or {}
+    global_vals = tweak_values.get("_global", {})
+    per_layout = tweak_values.get("perLayout", {})
 
-    lines.append("## Tweaks (changed from default)")
-    any_change = False
-    for k, v in values.items():
-        if json.dumps(v) == json.dumps(defaults.get(k)):
-            continue
-        any_change = True
-        lines.append(f"- `{k}`: `{defaults.get(k)}` → `{v}`")
-    if not any_change:
-        lines.append("_(no tweaks changed from default)_")
+    lines.append("## Tweaks")
     lines.append("")
 
+    any_tweak = False
+    if global_vals:
+        any_tweak = True
+        lines.append("### Global (apply to all layouts)")
+        for k, v in global_vals.items():
+            lines.append(f"- `{k}`: `{defaults.get(k)}` -> `{v}`")
+        lines.append("")
+
+    for lid, vals in per_layout.items():
+        if not vals:
+            continue
+        any_tweak = True
+        lines.append(f"### Per-layout - {_layout_label(layouts, lid)}")
+        for k, v in vals.items():
+            lines.append(f"- `{k}`: `{defaults.get(k)}` -> `{v}`")
+        lines.append("")
+
+    if not any_tweak:
+        lines.append("_(no tweaks changed from default)_")
+        lines.append("")
+
+    element_overrides = session.get("elementOverrides") or {}
+    el_layouts = [(lid, sels) for lid, sels in element_overrides.items() if sels]
+    if el_layouts:
+        lines.append("## Element overrides")
+        for lid, sels in el_layouts:
+            lines.append("")
+            lines.append(f"### {_layout_label(layouts, lid)}")
+            for selector, props in sels.items():
+                lines.append(f"- **`{selector}`**")
+                for p, v in props.items():
+                    lines.append(f"  - `{p}`: `{v}`")
+        lines.append("")
+
     lines.append("## Annotations")
-    anns = session.get("annotations", [])
-    if not anns:
+    annotations = session.get("annotations", [])
+    if not annotations:
         lines.append("_(no annotations)_")
     else:
-        layouts = {L["id"]: L for L in session.get("layouts", [])}
-        by_layout = {}
-        for a in anns:
+        by_layout: dict[str, list] = {}
+        for a in annotations:
             by_layout.setdefault(a["layoutId"], []).append(a)
         for lid, items in by_layout.items():
-            label = (layouts.get(lid) or {}).get("label", lid)
             lines.append("")
-            lines.append(f"### {label}")
+            lines.append(f"### {_layout_label(layouts, lid)}")
             for a in items:
                 text = (a.get("text") or "").strip() or "_(no note)_"
-                if a["type"] == "pin":
-                    lines.append(f"- 📍 Pin #{a['n']} at ({round(a['x'])}, {round(a['y'])}) — {text}")
+                if a.get("type") == "pin":
+                    lines.append(f"- Pin #{a['n']} at ({round(a['x'])}, {round(a['y'])}) - {text}")
                 else:
-                    x2, y2 = round(a['x'] + a['w']), round(a['y'] + a['h'])
-                    lines.append(f"- ▭ Quadrant #{a['n']} ({round(a['x'])},{round(a['y'])})→({x2},{y2}) — {text}")
+                    x2, y2 = round(a["x"] + a["w"]), round(a["y"] + a["h"])
+                    lines.append(
+                        f"- Quadrant #{a['n']} ({round(a['x'])},{round(a['y'])})->({x2},{y2}) - {text}"
+                    )
                     dom = a.get("dom") or []
                     if dom:
                         sels = ", ".join(f"`{s}`" for s in dom)
@@ -63,7 +101,9 @@ def build_markdown(session: dict) -> str:
 
     lines.append("")
     lines.append("## Suggested next prompt")
-    lines.append("> Apply the tweaks above globally and address each annotation. For pins, treat coordinates as where to focus the change. For quadrants, the listed DOM elements are what to modify.")
+    lines.append(
+        "> Apply tweaks above (respect Global vs Per-layout scope), apply element overrides as scoped CSS rules per layout, and address each annotation. For pins, treat coordinates as the focus point. For quadrants, the listed DOM elements are what to modify."
+    )
 
     return "\n".join(lines)
 

@@ -19,10 +19,7 @@ const state = {
   // Element overrides per layout: {[layoutId]: {[selector]: {[prop]: value}}}
   elementOverrides: {},
 
-  // Per-element selectorScope: {[layoutId]: {[selector]: 'layout' | 'global'}}
-  // For now we keep element overrides as per-layout only (element global == applied to all layouts where selector exists, treat as advanced; ship simple first)
-
-  annotations: [],
+  annotations: [],                // each: {id, n, layoutId, type, x, y, w, h, text, dom, round, hidden}
   viewMode: 1,
   paneLayouts: [],                // [layoutId, layoutId, layoutId]
   storageKey: '',
@@ -31,6 +28,8 @@ const state = {
   paneOverlays: [],
   panes: [],                      // root pane elements
   annCounter: 0,
+  currentRound: 1,                // bumped on every Export prompt — older rounds render as ghosts
+  showAnnotations: true,          // global visibility toggle (button + `h` shortcut)
 
   inspectMode: false,
   selectedElement: null,          // {layoutId, paneIdx, selector, label, props, computed}
@@ -59,13 +58,18 @@ const clear = (el) => { while (el.firstChild) el.removeChild(el.firstChild); };
 const currentLayoutId = () => state.paneLayouts[0]; // canonical "focused" layout
 
 /* ── Cascade resolution ─────────────────────────────────────────── */
+/* Cascade order: per-layout tweak → global tweak → per-layout default → global default. */
+function resolveTweak(key, layoutId) {
+  return state.tweakValues.perLayout[layoutId]?.[key]
+      ?? state.tweakValues._global[key]
+      ?? state.layoutDefaults?.[layoutId]?.[key]
+      ?? state.defaults[key];
+}
 function effectiveTweaks(layoutId) {
+  const layoutDefs = state.layoutDefaults?.[layoutId] || {};
+  const keys = new Set([...Object.keys(state.defaults), ...Object.keys(layoutDefs)]);
   const out = {};
-  for (const k of Object.keys(state.defaults)) {
-    out[k] = state.tweakValues.perLayout[layoutId]?.[k]
-          ?? state.tweakValues._global[k]
-          ?? state.defaults[k];
-  }
+  for (const k of keys) out[k] = resolveTweak(k, layoutId);
   return out;
 }
 function effectiveElementCss(layoutId) {
@@ -91,7 +95,10 @@ async function boot() {
   state.layouts = state.manifest.layouts || [];
   if (!state.layouts.length) { showFatalError('layouts.json has no layouts[]'); return; }
 
-  state.storageKey = `tweak-design:${location.pathname}`;
+  // Content-addressed storage key (see hashKey): same layouts → restored,
+  // different layouts → fresh, no cross-project bleed.
+  const contentSig = JSON.stringify(state.layouts.map(L => ({ id: L.id, src: L.src })));
+  state.storageKey = `tweak-design:${location.pathname}:${hashKey(contentSig)}`;
   document.getElementById('projectTitle').textContent = state.manifest.title || 'design review';
 
   if (state.manifest.tweaks_manifest) {
@@ -101,7 +108,7 @@ async function boot() {
     } catch (_) {}
   }
   if (!state.tweaksDef) state.tweaksDef = await autoDetect(state.layouts[0].src);
-  state.defaults = computeDefaults(state.tweaksDef);
+  ({ global: state.defaults, perLayout: state.layoutDefaults } = computeDefaults(state.tweaksDef));
 
   // Adopt the design system's accent for the playground UI itself.
   // No hardcoded brand color — the tool inherits the look of the design it reviews.
@@ -117,8 +124,21 @@ async function boot() {
     state.annotations = saved.annotations || [];
     state.viewMode = saved.viewMode || 1;
     state.paneLayouts = saved.paneLayouts || [];
+    state.currentRound = saved.currentRound || 1;
+    state.showAnnotations = saved.showAnnotations !== false;
     state.annCounter = state.annotations.reduce((m, a) => Math.max(m, a.n || 0), 0);
+    // Migration: pre-rounds annotations get round=1, hidden=false
+    const isLegacy = saved.currentRound === undefined && state.annotations.length > 0;
+    state.annotations.forEach(a => {
+      if (a.round === undefined) a.round = 1;
+      if (a.hidden === undefined) a.hidden = false;
+    });
+    // Legacy sessions (pre-rounds) had annotations that were already
+    // exported under the old "no rounds" model. Bump to round 2 so they
+    // immediately become ghosts and stop showing live DOM outlines.
+    if (isLegacy) state.currentRound = 2;
   }
+  document.body.dataset.annotationsHidden = state.showAnnotations ? '' : 'true';
   // Ensure scope/perLayout objects exist
   state.tweakValues._global    ||= {};
   state.tweakValues.perLayout  ||= {};
@@ -201,12 +221,49 @@ function humanize(v) {
   return v.replace(/^--/, '').replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
+/* Content-addressed storage key: derive a hash from the loaded layouts so
+   that different projects (different layouts) get different localStorage
+   keys, even when the playground URL is identical. Without this, opening
+   project B after project A would resurrect A's tweaks/annotations.
+   FNV-1a 32-bit is sync, dependency-free, and collision-free enough for
+   distinguishing distinct projects locally. Not for security. */
+function hashKey(s) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(16).padStart(8, '0');
+}
+
 function computeDefaults(def) {
-  const out = {};
-  for (const t of (def.color_tokens || [])) out[t.var] = t.default;
-  for (const t of (def.size_tokens  || [])) out[t.var] = t.default;
-  for (const s of (def.selects      || [])) out[s.id]  = s.default;
-  return out;
+  // Returns { global, perLayout } so that tokens with applies_to are scoped
+  // to those layouts. Without this split, multiple entries for the same var
+  // (e.g. --bg with different defaults per variant) would overwrite each
+  // other in iteration order, leaking the wrong palette into other layouts.
+  const global = {};
+  const perLayout = {};
+  const apply = (item, key, value) => {
+    if (item.applies_to && item.applies_to.length) {
+      for (const lid of item.applies_to) {
+        const stem = String(lid).replace(/\.html?$/i, '');
+        if (!perLayout[stem]) perLayout[stem] = {};
+        perLayout[stem][key] = value;
+      }
+    } else {
+      global[key] = value;
+    }
+  };
+  for (const t of (def.color_tokens || [])) apply(t, t.var, t.default);
+  for (const t of (def.size_tokens  || [])) apply(t, t.var, t.default);
+  for (const s of (def.selects      || [])) apply(s, s.id,  s.default);
+  return { global, perLayout };
+}
+
+/* Resolve a default value, preferring layout-scoped over global.
+   layoutId may be null (e.g. when displaying global tweaks in export). */
+function defaultFor(key, layoutId) {
+  return state.layoutDefaults?.[layoutId]?.[key] ?? state.defaults[key];
 }
 
 function restoreSession() {
@@ -222,6 +279,8 @@ function saveSession() {
       annotations: state.annotations,
       viewMode: state.viewMode,
       paneLayouts: state.paneLayouts,
+      currentRound: state.currentRound,
+      showAnnotations: state.showAnnotations,
     }));
   } catch (_) {}
 }
@@ -346,11 +405,26 @@ function renderPane(idx, layout) {
 }
 
 /* ── Iframe loading + shim ──────────────────────────────────────── */
+/* Convert viewport-height units (`Xvh`) to fixed px equivalents at a design
+   viewport of 900px (laptop standard). Without this, an iframe whose height
+   was set to scrollHeight (~7000px for a long page) would make `100vh`
+   resolve to 7000px — turning `.hero { height: 92vh }` into a 6440px hero
+   that consumes the whole iframe. By freezing vh → px before the iframe
+   parses, the iframe can be naturally tall (good for outer scroll UX) AND
+   vh-using layouts render at correct designer-intended proportions. */
+const FROZEN_VIEWPORT_H = 900;
+function freezeViewportUnits(html) {
+  return html.replace(/\b(\d+(?:\.\d+)?)vh\b/gi, (_, val) => {
+    return (parseFloat(val) * FROZEN_VIEWPORT_H / 100) + 'px';
+  });
+}
+
 async function loadIntoFrame(frame, layout, paneIdx) {
   try {
     const r = await fetch(layout.src, { cache: 'no-store' });
     if (!r.ok) throw new Error(`fetch failed ${r.status}`);
     let html = await r.text();
+    html = freezeViewportUnits(html);
     html = injectShim(html);
     frame.srcdoc = html;
     frame.addEventListener('load', () => {
@@ -358,6 +432,7 @@ async function loadIntoFrame(frame, layout, paneIdx) {
       pushElementsToPane(paneIdx);
       reapplyHighlights(layout.id, frame);
       if (state.inspectMode) postShim(frame, { type: 'tweak:inspect-mode', on: true });
+      applyDisplayMode(frame, paneIdx);
     }, { once: true });
   } catch (e) {
     frame.srcdoc = `<div style="padding:48px;font-family:sans-serif;color:#900">Could not load ${layout.src} — ${e.message}</div>`;
@@ -366,6 +441,60 @@ async function loadIntoFrame(frame, layout, paneIdx) {
 
 function postShim(frame, msg) {
   try { frame.contentWindow.postMessage(msg, '*'); } catch (_) {}
+}
+
+/* Auto-detect "page mode" vs "slide mode" by inspecting the loaded
+   document's natural dimensions. Slides are wide-and-short (1920x1080
+   or similar); pages are typically taller than wide. We wait for fonts
+   to settle (web fonts load async and shift layout) before measuring,
+   then either fix the wrap to slide (default 1080 height) or grow it to
+   the page's actual scrollHeight so the stage can scroll vertically. */
+function applyDisplayMode(frame, paneIdx) {
+  const stage = state.paneStages[paneIdx];
+  if (!stage) return;
+  const wrap = stage.firstElementChild;
+  if (!wrap) return;
+  const measure = () => {
+    try {
+      const doc = frame.contentDocument;
+      if (!doc) return;
+      const docH = Math.max(
+        doc.documentElement.scrollHeight,
+        doc.body ? doc.body.scrollHeight : 0
+      );
+      const docW = Math.max(
+        doc.documentElement.scrollWidth,
+        doc.body ? doc.body.scrollWidth : 0
+      ) || 1920;
+      // Page mode triggers when content is meaningfully taller than wide,
+      // OR overflows the default slide height. Threshold of 1.05 lets
+      // borderline 1920x1080 slides stay in slide mode.
+      const isPage = (docH / docW) > 1.05 || docH > 1080 * 1.2;
+      if (isPage) {
+        stage.dataset.mode = 'page';
+        wrap.dataset.display = 'page';
+        // Wrap grows to the page's natural scrollHeight so the stage scrolls
+        // smoothly. `vh` units have already been frozen to px equivalents at
+        // load time (see freezeViewportUnits) so they don't inflate here.
+        wrap.style.height = docH + 'px';
+      } else {
+        stage.dataset.mode = 'slide';
+        wrap.dataset.display = 'slide';
+        wrap.style.height = '';
+      }
+      scaleAllPanes();
+    } catch (_) { /* cross-origin or detached frame; safe to ignore */ }
+  };
+  try {
+    const doc = frame.contentDocument;
+    if (doc && doc.fonts && doc.fonts.ready) {
+      doc.fonts.ready.then(measure);
+    } else {
+      setTimeout(measure, 200);
+    }
+  } catch (_) {
+    setTimeout(measure, 200);
+  }
 }
 
 const SHIM_BODY = `(function(){
@@ -518,10 +647,7 @@ function getScope(key) { return state.tweakValues._scope[key] || 'layout'; }
 function setScope(key, scope) { state.tweakValues._scope[key] = scope; }
 
 function effectiveValue(key) {
-  const lid = currentLayoutId();
-  return state.tweakValues.perLayout[lid]?.[key]
-      ?? state.tweakValues._global[key]
-      ?? state.defaults[key];
+  return resolveTweak(key, currentLayoutId());
 }
 function valueSource(key) {
   const lid = currentLayoutId();
@@ -553,11 +679,16 @@ function renderTweaks() {
   const groupMap = new Map(groupOrder.map(g => [g.id, []]));
   const ungrouped = [];
 
+  const lid = currentLayoutId();
+  const matchesLayout = (token) => {
+    if (!token.applies_to || !token.applies_to.length) return true; // global token
+    return token.applies_to.some(a => String(a).replace(/\.html?$/i, '') === lid);
+  };
   const all = [
     ...(def.color_tokens || []).map(t => ({ kind: 'color', def: t })),
     ...(def.size_tokens  || []).map(t => ({ kind: 'size',  def: t })),
     ...(def.selects      || []).map(t => ({ kind: 'select', def: t })),
-  ];
+  ].filter(item => matchesLayout(item.def));
   all.forEach(item => {
     const gid = item.def.group;
     if (gid && groupMap.has(gid)) groupMap.get(gid).push(item);
@@ -620,7 +751,7 @@ function makeInheritedHint(key) {
 }
 
 function makeResetBtn(key) {
-  const def = state.defaults[key];
+  const def = defaultFor(key, currentLayoutId());
   const cur = effectiveValue(key);
   const isDefault = JSON.stringify(cur) === JSON.stringify(def);
   return make('span', {
@@ -658,15 +789,20 @@ function renderColorTweak(t) {
   const val = effectiveValue(t.var);
   const colorEl = make('input', { type: 'color', class: 'tweak__color', value: val });
   const hexEl = make('input', { type: 'text', class: 'tweak__hex', value: val });
-  const sync = (v) => {
+  // Two paths: `apply` runs during drag (state + iframe push, no sidebar re-render)
+  // so the native color picker keeps its DOM anchor and stays open. `commit` runs on
+  // mouseup/blur and re-renders the sidebar to refresh reset-chip affordances.
+  const apply = (v) => {
     setTweakValue(t.var, v);
     colorEl.value = v; hexEl.value = v;
-    renderTweaks();
   };
-  colorEl.addEventListener('input', () => sync(colorEl.value));
+  // `apply` already ran on `input`; commit only refreshes sidebar affordances (reset chips, etc.).
+  const commit = () => { renderTweaks(); };
+  colorEl.addEventListener('input', () => apply(colorEl.value));
+  colorEl.addEventListener('change', () => commit());
   hexEl.addEventListener('change', () => {
     const v = hexEl.value.trim();
-    if (/^#[0-9a-fA-F]{3,8}$/.test(v)) sync(v); else hexEl.value = effectiveValue(t.var);
+    if (/^#[0-9a-fA-F]{3,8}$/.test(v)) { apply(v); commit(); } else hexEl.value = effectiveValue(t.var);
   });
   return make('div', { class: 'tweak' }, [
     tweakLabelRow(t.var, t.label),
@@ -678,13 +814,15 @@ function renderSizeTweak(t) {
   const val = parseFloat(effectiveValue(t.var));
   const range = make('input', { type: 'range', class: 'tweak__range', min: t.min ?? 0, max: t.max ?? 1000, step: t.step ?? 1, value: val });
   const num = make('input', { type: 'number', class: 'tweak__num', value: val, min: t.min ?? 0, max: t.max ?? 1000, step: t.step ?? 1 });
-  const sync = (v) => {
+  const apply = (v) => {
     setTweakValue(t.var, String(v));
     range.value = v; num.value = v;
-    renderTweaks();
   };
-  range.addEventListener('input', () => sync(range.value));
-  num.addEventListener('input', () => sync(num.value));
+  const commit = () => { renderTweaks(); };
+  range.addEventListener('input', () => apply(range.value));
+  range.addEventListener('change', () => commit());
+  num.addEventListener('input', () => apply(num.value));
+  num.addEventListener('change', () => commit());
   return make('div', { class: 'tweak' }, [
     tweakLabelRow(t.var, t.label),
     make('div', { class: 'tweak__size-row' }, [range, num, make('span', { class: 'tweak__unit' }, t.unit || '')]),
@@ -723,20 +861,34 @@ function setInspectMode(on) {
   if (!on && state.selectedElement) closeElementPanel();
 }
 
-function findElementTweak(selector) {
-  const list = state.tweaksDef.element_tweaks || [];
-  // Walk path from rightmost segment outward looking for matches
-  // Try direct match first, then look for any ancestor in the selector that matches
+function findElementTweak(pathSelector) {
+  // pathSelector: iframe-side path like "body > main > article.hero > h1.hero-headline"
+  // Each manifest entry's e.selector may be a comma-separated CSS list — e.g.
+  // ".hero-headline, .hero h1, .hero-feature h1". We test each clause individually
+  // and accept either an exact path match or a loose match where the rightmost
+  // token of the clause appears anywhere in the path.
+  const list = (state.tweaksDef && state.tweaksDef.element_tweaks) || [];
   for (const e of list) {
-    if (selector === e.selector) return e;
-  }
-  for (const e of list) {
-    if (selector.includes(e.selector.replace(/^[#.]/, ''))) return e;
+    const clauses = (e.selector || '').split(',').map(s => s.trim()).filter(Boolean);
+    for (const clause of clauses) {
+      if (pathSelector === clause) return e;
+      const last = clause.split(/[\s>~+]+/).filter(Boolean).pop() || '';
+      const needle = last.replace(/^[#.]/, '');
+      if (needle) {
+        const re = new RegExp('(?:^|[\\s>~+#.])' + needle.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&') + '(?:$|[\\s>~+])');
+        if (re.test(pathSelector)) return e;
+      }
+    }
   }
   return null;
 }
 
 function onElementPicked(paneIdx, msg) {
+  // Exit inspect mode FIRST — must happen while state.selectedElement is still null,
+  // otherwise setInspectMode(false) → closeElementPanel() races against the panel
+  // we are about to open and the user sees a flash that closes immediately.
+  setInspectMode(false);
+
   const layoutId = state.paneLayouts[paneIdx];
   const match = findElementTweak(msg.selector);
   const props = match?.props || ['font-size', 'color', 'font-weight', 'letter-spacing', 'line-height', 'padding'];
@@ -751,8 +903,6 @@ function onElementPicked(paneIdx, msg) {
     fromManifest: !!match,
   };
   renderElementPanel();
-  // Also exit inspect mode now that we have a selection (so user can edit without accidental re-pick)
-  setInspectMode(false);
 }
 
 function closeElementPanel() {
@@ -801,7 +951,6 @@ function renderPropControl(sel, prop, currentOverride) {
   const computedVal = sel.computed[prop] || '';
   const value = currentOverride ?? computedVal;
 
-  // Determine control type by prop name
   if (['color', 'background', 'background-color', 'border-color', 'outline-color'].includes(prop)) {
     return renderColorPropControl(sel, prop, value, computedVal);
   }
@@ -926,9 +1075,12 @@ function bindAnnotationOverlay(paneIdx, overlay, frame, layoutId) {
   const toFrameCoords = (cx, cy) => {
     const wrap = state.paneStages[paneIdx].firstElementChild;
     const r = wrap.getBoundingClientRect();
-    const sx = (cx - r.left) * (1920 / r.width);
-    const sy = (cy - r.top)  * (1080 / r.height);
-    return { x: Math.max(0, Math.min(1920, sx)), y: Math.max(0, Math.min(1080, sy)) };
+    // Wrap's actual rendered size so coords work in both slide and page modes.
+    const w = wrap.offsetWidth;
+    const h = wrap.offsetHeight;
+    const sx = (cx - r.left) * (w / r.width);
+    const sy = (cy - r.top)  * (h / r.height);
+    return { x: Math.max(0, Math.min(w, sx)), y: Math.max(0, Math.min(h, sy)) };
   };
   overlay.addEventListener('mousedown', (e) => {
     if (e.button !== 0 || state.inspectMode) return;
@@ -968,8 +1120,10 @@ function bindAnnotationOverlay(paneIdx, overlay, frame, layoutId) {
 
 function addAnnotation(ann, frame, paneIdx) {
   state.annCounter++;
-  ann.id = `ann-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+  ann.id = `ann-${crypto.randomUUID()}`;
   ann.n = state.annCounter;
+  ann.round = state.currentRound;
+  ann.hidden = false;
   state.annotations.push(ann);
   saveSession();
   renderAnnotations();
@@ -979,12 +1133,44 @@ function addAnnotation(ann, frame, paneIdx) {
   }
 }
 
+function setAnnotationsVisible(visible) {
+  state.showAnnotations = visible;
+  document.body.dataset.annotationsHidden = visible ? '' : 'true';
+  const btn = $('#visibilityBtn');
+  if (btn) btn.classList.toggle('is-active', !visible);
+  saveSession();
+  refreshHighlightsAllPanes();
+}
+
+function setAnnHidden(annId, hidden) {
+  const a = state.annotations.find(x => x.id === annId);
+  if (!a) return;
+  a.hidden = hidden;
+  saveSession();
+  renderAnnotations();
+  refreshHighlightsAllPanes();
+}
+
 function reapplyHighlights(layoutId, frame) {
-  const sels = state.annotations
-    .filter(a => a.type === 'rect' && a.layoutId === layoutId && (a.dom || []).length)
-    .flatMap(a => a.dom);
-  if (!sels.length) return;
+  // Filter to currently-visible rect annotations: respect global show toggle,
+  // per-item hidden flag, and only current round (ghosts from prior rounds
+  // don't keep their DOM outlines, matching their muted canvas appearance).
+  // Always send — empty list clears any existing outlines in the iframe.
+  const sels = !state.showAnnotations ? [] :
+    state.annotations
+      .filter(a => a.type === 'rect'
+                && a.layoutId === layoutId
+                && !a.hidden
+                && a.round === state.currentRound
+                && (a.dom || []).length)
+      .flatMap(a => a.dom);
   postShim(frame, { type: 'tweak:highlight', selectors: sels });
+}
+
+function refreshHighlightsAllPanes() {
+  state.paneFrames.forEach((f, i) => {
+    if (f) reapplyHighlights(state.paneLayouts[i], f);
+  });
 }
 
 function renderPaneVisuals(paneIdx) {
@@ -992,15 +1178,27 @@ function renderPaneVisuals(paneIdx) {
   if (!wrap) return;
   wrap.querySelectorAll('.annotation-pin, .annotation-rect').forEach(el => el.remove());
   const layoutId = state.paneLayouts[paneIdx];
-  state.annotations.filter(a => a.layoutId === layoutId).forEach(a => {
-    if (a.type === 'pin') {
-      wrap.appendChild(make('div', { class: 'annotation-pin', style: { left: a.x + 'px', top: a.y + 'px' } }, String(a.n)));
-    } else {
-      const rect = make('div', { class: 'annotation-rect', style: { left: a.x + 'px', top: a.y + 'px', width: a.w + 'px', height: a.h + 'px' } });
-      rect.appendChild(make('span', { class: 'annotation-rect__badge' }, String(a.n)));
-      wrap.appendChild(rect);
-    }
-  });
+  state.annotations
+    .filter(a => a.layoutId === layoutId && !a.hidden)
+    .forEach(a => {
+      const isGhost = a.round < state.currentRound;
+      const ghostCls = isGhost ? ' is-ghost' : '';
+      if (a.type === 'pin') {
+        wrap.appendChild(make('div', {
+          class: 'annotation-pin' + ghostCls,
+          style: { left: a.x + 'px', top: a.y + 'px' },
+          'data-round': a.round,
+        }, String(a.n)));
+      } else {
+        const rect = make('div', {
+          class: 'annotation-rect' + ghostCls,
+          style: { left: a.x + 'px', top: a.y + 'px', width: a.w + 'px', height: a.h + 'px' },
+          'data-round': a.round,
+        });
+        rect.appendChild(make('span', { class: 'annotation-rect__badge' }, String(a.n)));
+        wrap.appendChild(rect);
+      }
+    });
 }
 function renderAllPaneVisuals() { for (let i = 0; i < state.viewMode; i++) renderPaneVisuals(i); }
 
@@ -1022,12 +1220,22 @@ function renderAnnotations() {
   renderAllPaneVisuals();
 }
 function renderAnnItem(a) {
+  const isGhost = a.round < state.currentRound;
   const meta = a.type === 'pin'
     ? `📍 #${a.n} · pin (${Math.round(a.x)}, ${Math.round(a.y)})`
     : `▭ #${a.n} · rect (${Math.round(a.x)},${Math.round(a.y)})→(${Math.round(a.x + a.w)},${Math.round(a.y + a.h)})`;
   const text = make('textarea', { class: 'ann-item__text', rows: 2, placeholder: 'Note for this mark…' });
   text.value = a.text || '';
   text.addEventListener('input', () => { a.text = text.value; saveSession(); });
+  const roundChip = make('span', {
+    class: 'ann-item__round' + (isGhost ? ' is-ghost' : ''),
+    title: isGhost ? `Round ${a.round} — past round (ghost)` : `Round ${a.round} — current`,
+  }, `R${a.round}`);
+  const hideBtn = make('button', {
+    class: 'ann-item__viz' + (a.hidden ? ' is-off' : ''),
+    title: a.hidden ? 'show this annotation' : 'hide this annotation',
+    onclick: () => setAnnHidden(a.id, !a.hidden),
+  }, a.hidden ? '⊘' : '👁');
   const del = make('button', {
     class: 'ann-item__del', title: 'delete',
     onclick: () => {
@@ -1038,13 +1246,13 @@ function renderAnnItem(a) {
       });
     },
   }, '×');
-  return make('div', { class: 'ann-item' }, [
+  return make('div', { class: 'ann-item' + (a.hidden ? ' is-hidden-state' : '') + (isGhost ? ' is-ghost' : '') }, [
     make('div', { class: 'ann-item__icon' + (a.type === 'pin' ? ' ann-item__icon--pin' : '') }, a.type === 'pin' ? '📍' : '▭'),
     make('div', { class: 'ann-item__body' }, [
-      make('div', { class: 'ann-item__meta' }, meta),
+      make('div', { class: 'ann-item__meta' }, [roundChip, ' ', meta]),
       text,
     ]),
-    del,
+    make('div', { class: 'ann-item__actions' }, [hideBtn, del]),
   ]);
 }
 
@@ -1055,8 +1263,17 @@ function scaleAllPanes() {
     const wrap = stage.firstElementChild;
     if (!wrap) return;
     const r = stage.getBoundingClientRect();
-    const s = Math.min(r.width / 1920, r.height / 1080) * 0.94;
-    wrap.style.transform = `translate(-50%, -50%) scale(${s})`;
+    const wrapW = wrap.offsetWidth;
+    const wrapH = wrap.offsetHeight;
+    if (wrap.dataset.display === 'page') {
+      // Page mode: fit width only (height scrolls); cap at 1.0 so small
+      // pages don't blow up to fill the pane.
+      const s = Math.min((r.width - 24) / wrapW, 1) * 0.96;
+      wrap.style.transform = `translate(-50%, 0) scale(${s})`;
+    } else {
+      const s = Math.min(r.width / wrapW, r.height / wrapH) * 0.94;
+      wrap.style.transform = `translate(-50%, -50%) scale(${s})`;
+    }
   });
 }
 window.addEventListener('resize', () => { requestAnimationFrame(scaleAllPanes); });
@@ -1066,6 +1283,9 @@ function bindGlobalEvents() {
   bindModeButtons();
 
   $('#inspectBtn').addEventListener('click', () => setInspectMode(!state.inspectMode));
+  $('#visibilityBtn')?.addEventListener('click', () => setAnnotationsVisible(!state.showAnnotations));
+  // Reflect persisted visibility on the topbar button at boot
+  if (!state.showAnnotations) $('#visibilityBtn')?.classList.add('is-active');
   $('#elementPanelClose').addEventListener('click', closeElementPanel);
 
   window.addEventListener('message', (e) => {
@@ -1103,6 +1323,7 @@ function bindGlobalEvents() {
     else if (e.key === '3') setViewMode(3);
     else if (e.key === 'i' || e.key === 'I') setInspectMode(!state.inspectMode);
     else if (e.key === 'e' || e.key === 'E') exportPrompt();
+    else if (e.key === 'h' || e.key === 'H') setAnnotationsVisible(!state.showAnnotations);
     else if (e.key === 'Escape') {
       if (state.inspectMode) setInspectMode(false);
       else if (state.selectedElement) closeElementPanel();
@@ -1134,7 +1355,7 @@ function buildPromptMarkdown() {
   if (globalKeys.length) {
     lines.push(`### Global (apply to all layouts)`);
     globalKeys.forEach(k => {
-      lines.push(`- \`${k}\`: \`${state.defaults[k]}\` → \`${state.tweakValues._global[k]}\``);
+      lines.push(`- \`${k}\`: \`${defaultFor(k, null)}\` → \`${state.tweakValues._global[k]}\``);
     });
     lines.push(``);
   }
@@ -1145,7 +1366,7 @@ function buildPromptMarkdown() {
     const layout = state.layouts.find(L => L.id === lid);
     lines.push(`### Per-layout — ${layout?.label || lid}`);
     keys.forEach(k => {
-      const def = state.defaults[k];
+      const def = defaultFor(k, lid);
       lines.push(`- \`${k}\`: \`${def}\` → \`${vals[k]}\``);
     });
     lines.push(``);
@@ -1207,9 +1428,16 @@ async function exportPrompt() {
   const md = buildPromptMarkdown();
   $('#exportPre').textContent = md;
   $('#exportModal').hidden = false;
-  $('#modalHint').textContent = 'Copied to your clipboard. Paste into your Claude conversation.';
+  $('#modalHint').textContent = `Copied to your clipboard. Paste into your Claude conversation. Round ${state.currentRound} closed → next annotations go to Round ${state.currentRound + 1}.`;
   try { await navigator.clipboard.writeText(md); }
   catch (_) { $('#modalHint').textContent = 'Could not auto-copy — select all + copy manually.'; }
+  // Bump round so future annotations belong to the next round; previous-round
+  // marks now render as ghosts. Also clear DOM outlines on iframe — they were
+  // tied to the just-exported round.
+  state.currentRound++;
+  saveSession();
+  renderAnnotations();
+  refreshHighlightsAllPanes();
 }
 
 function saveJsonFile() {

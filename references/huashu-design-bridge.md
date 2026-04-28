@@ -24,7 +24,7 @@ Match the user's tone too — if they've been formal, be formal; if they've been
 Run the bridge:
 
 ```bash
-python /Users/valente/.claude/skills/tweak-design/scripts/from-huashu-design.py \
+python ~/.claude/skills/tweak-design/scripts/from-huashu-design.py \
   --project <project-root>
 ```
 

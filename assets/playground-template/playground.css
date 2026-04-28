@@ -17,9 +17,19 @@
 
   /* --accent is a neutral fallback. The JS layer overrides it at runtime with
      the first color_token from the loaded tweaks.json so the playground
-     visually adapts to whatever design system it is reviewing. */
+     visually adapts to whatever design system it is reviewing. Used for
+     design-context UI: color swatches, scope chips, annotations, brand dot. */
   --accent:      #5B8DEF;
-  --accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
+  --accent-soft: color-mix(in srgb, var(--accent-system) 14%, transparent);
+
+  /* --accent-system is the playground's OWN tool-chrome color. Fixed (never
+     overridden by the loaded design). Used for: active layout tab, Export
+     prompt CTA, split-view mode toggle. Amber (yellow-orange) keeps chrome
+     warm and legible against any design's adopted accent — also matches the
+     skill's original "dark UI · yellow accent" intent (see file header). */
+  --accent-system:      #F59E0B;
+  --accent-system-soft: color-mix(in srgb, var(--accent-system) 16%, transparent);
+
   --danger:      #ff5577;
   --pin:         #ff3344;
 
@@ -56,7 +66,7 @@ html, body {
 button { background: none; border: 0; color: inherit; font: inherit; cursor: pointer; }
 input { font: inherit; color: inherit; background: transparent; border: 0; outline: 0; }
 input[type="range"] { padding: 0; }
-::selection { background: var(--accent); color: #000; }
+::selection { background: var(--accent-system); color: #000; }
 
 body {
   display: grid;
@@ -88,10 +98,10 @@ body {
 }
 .brand__dot {
   width: 10px; height: 10px; border-radius: 999px;
-  background: var(--accent);
+  background: var(--accent-system);
   display: inline-block;
   align-self: center;
-  box-shadow: 0 0 12px var(--accent-soft);
+  box-shadow: 0 0 12px var(--accent-system-soft);
 }
 .brand__name {
   font-size: 13px;
@@ -124,8 +134,8 @@ body {
 }
 .tab:hover { background: var(--bg-elev); color: var(--ink); }
 .tab.is-active {
-  background: var(--accent-soft);
-  color: var(--accent);
+  background: var(--accent-system-soft);
+  color: var(--accent-system);
 }
 
 .topbar__modes {
@@ -144,7 +154,7 @@ body {
 }
 .mode-btn:hover { color: var(--ink); }
 .mode-btn.is-active {
-  background: var(--accent);
+  background: var(--accent-system);
   color: #000;
 }
 
@@ -193,7 +203,7 @@ body {
   transition: border-color 0.15s var(--easing);
 }
 .pane__select:hover { border-color: var(--line); }
-.pane__select:focus { border-color: var(--accent); }
+.pane__select:focus { border-color: var(--accent-system); }
 .pane__id {
   font-family: 'JetBrains Mono', monospace;
   font-size: 11px;
@@ -218,6 +228,22 @@ body {
   background: #fff;
   box-shadow: 0 6px 40px rgba(0, 0, 0, 0.5);
 }
+/* Page mode: tall layouts (height > width) — top-anchored, stage scrolls
+   vertically. JS sets wrap height to the content's actual scrollHeight
+   and applies data-display="page" + data-mode="page" on the stage. */
+.pane__stage[data-mode="page"] {
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: var(--bg-canvas);
+}
+.pane__frame-wrap[data-display="page"] {
+  top: 0;
+  transform-origin: center top;
+  /* Page-mode wrap is narrower than slide-mode (1920) so generic web pages
+     with typical max-width (1280-1440) fill more of the pane after scaling.
+     Slide mode keeps 1920×1080 above for huashu-design decks. */
+  width: 1440px;
+}
 .pane__frame {
   width: 100%;
   height: 100%;
@@ -239,6 +265,52 @@ body {
   pointer-events: none;
 }
 
+/* Annotations: rounds + visibility ─────────────────────────────── */
+/* Global toggle: when body has data-annotations-hidden, all marks hide. */
+body[data-annotations-hidden="true"] .annotation-pin,
+body[data-annotations-hidden="true"] .annotation-rect { display: none; }
+/* Ghost (annotations from a previous round, when shown): muted but legible */
+.annotation-pin.is-ghost { opacity: 0.4; filter: grayscale(0.5); }
+.annotation-rect.is-ghost { opacity: 0.4; }
+/* Sidebar item ghost dim + hidden item dim */
+.ann-item.is-ghost { opacity: 0.55; }
+.ann-item.is-hidden-state { opacity: 0.4; }
+.ann-item.is-hidden-state .ann-item__text { text-decoration: line-through; text-decoration-color: var(--ink-faint); }
+/* Round chip on each sidebar item */
+.ann-item__round {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  background: var(--bg-elev-2);
+  color: var(--ink-soft);
+  padding: 2px 6px;
+  border-radius: 3px;
+  margin-right: 6px;
+  vertical-align: 1px;
+}
+.ann-item__round.is-ghost {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--ink-mute);
+}
+/* Per-item action buttons (hide + delete) — stacked column */
+.ann-item__actions { display: flex; flex-direction: column; gap: 4px; align-items: center; }
+.ann-item__viz {
+  font-size: 12px;
+  color: var(--ink-mute);
+  padding: 2px 6px;
+  border-radius: 3px;
+  line-height: 1;
+  transition: color 0.15s var(--easing), background 0.15s var(--easing);
+}
+.ann-item__viz:hover { color: var(--ink); background: var(--bg-elev); }
+.ann-item__viz.is-off { color: var(--accent-system); }
+/* Visibility action button in topbar mirrors inspectBtn style; is-active when annotations are HIDDEN */
+.action-btn#visibilityBtn.is-active {
+  background: var(--accent-system-soft);
+  color: var(--accent-system);
+}
+
 .annotation-pin {
   position: absolute;
   width: 22px; height: 22px;
@@ -258,14 +330,14 @@ body {
 .annotation-rect {
   position: absolute;
   background: rgba(255, 204, 0, 0.16);
-  border: 2px solid var(--accent);
+  border: 2px solid var(--accent-system);
   border-radius: 2px;
   pointer-events: none;
 }
 .annotation-rect__badge {
   position: absolute;
   top: -10px; left: -10px;
-  background: var(--accent);
+  background: var(--accent-system);
   color: #000;
   font-size: 11px;
   font-weight: 700;
@@ -279,7 +351,12 @@ body {
   background: var(--bg-side);
   border-left: 1px solid var(--line);
   display: grid;
-  grid-template-rows: 1fr 1fr auto;
+  /* auto auto 1fr auto: elementPanel (auto, often hidden), tweaks (auto =
+     content height, top-aligned), annotations (1fr = absorbs excess
+     vertical space), footer (auto). Without this, 1fr 1fr would force
+     Tweaks and Annotations to half-fill each, leaving empty space inside
+     short sections and giving a "floaty" feel. */
+  grid-template-rows: auto auto 1fr auto;
   overflow: hidden;
 }
 .sidebar__section {
@@ -290,6 +367,19 @@ body {
   min-height: 0;
 }
 .sidebar__section--scroll { overflow-y: auto; }
+/* Honor the [hidden] HTML attribute even though .sidebar__section sets
+   display:flex (which would otherwise win over the user-agent
+   `[hidden] { display: none }` rule by origin). */
+.sidebar__section[hidden] { display: none; }
+/* Pin each direct child to its grid row so display:none on item 1 doesn't
+   shift items 2-4 upward (which would put the footer in the 1fr "grow" row
+   and stretch its buttons to absorb the remaining vertical space). With
+   explicit grid-row per child, hidden items collapse their row to 0 and
+   visible items keep their intended row. */
+.sidebar > *:nth-child(1) { grid-row: 1; }
+.sidebar > *:nth-child(2) { grid-row: 2; }
+.sidebar > *:nth-child(3) { grid-row: 3; }
+.sidebar > *:nth-child(4) { grid-row: 4; }
 
 .section__head {
   display: flex;
@@ -314,8 +404,8 @@ body {
 .annotation-count {
   font-family: 'JetBrains Mono', monospace;
   font-size: 11px;
-  color: var(--accent);
-  background: var(--accent-soft);
+  color: var(--accent-system);
+  background: var(--accent-system-soft);
   padding: 1px 7px;
   border-radius: 999px;
 }
@@ -358,7 +448,7 @@ body {
   border-radius: 4px;
   transition: color 0.15s var(--easing), background 0.15s var(--easing);
 }
-.tweak__reset:hover { color: var(--accent); background: var(--accent-soft); }
+.tweak__reset:hover { color: var(--accent-system); background: var(--accent-system-soft); }
 .tweak__reset.is-hidden { visibility: hidden; }
 
 .tweak__color-row {
@@ -389,7 +479,7 @@ body {
   text-transform: uppercase;
   transition: border-color 0.15s var(--easing);
 }
-.tweak__hex:focus { border-color: var(--accent); }
+.tweak__hex:focus { border-color: var(--accent-system); }
 
 .tweak__size-row {
   display: flex;
@@ -407,14 +497,14 @@ body {
 .tweak__range::-webkit-slider-thumb {
   appearance: none;
   width: 16px; height: 16px;
-  background: var(--accent);
+  background: var(--accent-system);
   border-radius: 999px;
   cursor: pointer;
   border: 2px solid var(--bg-side);
 }
 .tweak__range::-moz-range-thumb {
   width: 16px; height: 16px;
-  background: var(--accent);
+  background: var(--accent-system);
   border-radius: 999px;
   cursor: pointer;
   border: 2px solid var(--bg-side);
@@ -456,7 +546,7 @@ body {
 }
 .tweak__seg-opt:hover { color: var(--ink); }
 .tweak__seg-opt.is-active {
-  background: var(--accent);
+  background: var(--accent-system);
   color: #000;
   font-weight: 600;
 }
@@ -490,8 +580,8 @@ body {
   width: 22px; height: 22px;
   display: flex; align-items: center; justify-content: center;
   font-size: 13px;
-  color: var(--accent);
-  background: var(--accent-soft);
+  color: var(--accent-system);
+  background: var(--accent-system-soft);
   border-radius: 999px;
   flex-shrink: 0;
 }
@@ -553,8 +643,8 @@ body {
   transition: background 0.15s var(--easing), color 0.15s var(--easing), border-color 0.15s var(--easing);
 }
 .btn:hover { background: var(--bg-elev-2); color: var(--ink); }
-.btn--accent { background: var(--accent); color: #000; font-weight: 600; }
-.btn--accent:hover { background: #ffd633; color: #000; }
+.btn--accent { background: var(--accent-system); color: #000; font-weight: 600; }
+.btn--accent:hover { background: color-mix(in srgb, var(--accent-system) 88%, #fff); color: #000; }
 .btn--ghost { background: transparent; border-color: var(--line); }
 .btn--ghost:hover { border-color: var(--ink-mute); }
 .btn--danger-ghost { background: transparent; border-color: var(--line); color: var(--ink-mute); }

@@ -186,10 +186,17 @@ Then individual tokens reference the group by id via the `group` field.
 
 ## Diff calculation (used by Export prompt)
 
-The export prompt only includes tweaks where `current_value !== default`. The diff is calculated against the manifest defaults, not against the layout's CSS file. This means:
-- If the user opens the playground, changes nothing, and exports — the export shows "no tweaks changed"
-- If they change `--brand-primary` from #5B8DEF to #3B6FD8 — export shows that diff
-- For selects: if `default: "dark"` and they switch to "light", export shows `cover-bg: dark → light`
+The export prompt only includes tweaks the user actually set, split by scope:
+
+- A **Global** section lists every key written to `_global` (i.e. promoted to all-layouts via the 🌐 chip)
+- One **Per-layout** section per layout that has any per-layout overrides
+- Each line shows `key: default -> new_value` so the receiving agent has the full diff
+
+The default for each line resolves through the same layout-aware cascade the playground uses (per-layout defaults from `applies_to` shadow global defaults). If neither the user nor the manifest has any opinion, the line is simply absent.
+
+For **selects**: if `default: "dark"` and the user switches to "light", export shows `cover-bg: dark -> light`.
+
+Element-level overrides (set via the inspector) are emitted in a separate `## Element overrides` section, grouped by layout and selector.
 
 ## Auto-detection (no manifest)
 

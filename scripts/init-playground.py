@@ -9,13 +9,15 @@ Usage:
     [--title "My deck review"]
 
 Effect:
-  <project>/playground/                  # copied template
+  <project>/playground/                  # copied template (or refreshed if exists)
   <project>/playground/layouts.json      # generated from --layouts
   <project>/playground/tweaks.json       # copied from --tweaks-manifest if given
 
 Then:
   cd <project>/playground
   python server.py
+
+Requires Python 3.8+.
 """
 
 import argparse
@@ -67,13 +69,15 @@ def main():
 
     pg_dir = project / "playground"
     if pg_dir.exists() and not args.force:
-        print(f"  playground/ already exists at {pg_dir} — use --force to overwrite layouts.json/tweaks.json without re-copying assets", file=sys.stderr)
-        # In non-force mode, only refresh layouts.json (preserve any user edits to template files)
+        # Refresh layouts.json + tweaks.json but keep template files (preserves
+        # any local edits the user made to playground.html/css/js).
+        # Pass --force to wipe playground/ and recopy from the skill template.
+        print(f"  playground/ already exists at {pg_dir} - refreshing layouts.json/tweaks.json only (use --force to recopy assets)", file=sys.stderr)
     else:
         if pg_dir.exists() and args.force:
             shutil.rmtree(pg_dir)
         shutil.copytree(TEMPLATE_DIR, pg_dir, dirs_exist_ok=True)
-        print(f"  copied template → {pg_dir}")
+        print(f"  copied template -> {pg_dir}")
 
     # Build layouts.json
     layouts = []
@@ -109,7 +113,7 @@ def main():
         tweaks_dest = pg_dir / "tweaks.json"
         shutil.copy2(tweaks_src, tweaks_dest)
         manifest["tweaks_manifest"] = "./tweaks.json"
-        print(f"  copied tweaks manifest → {tweaks_dest}")
+        print(f"  copied tweaks manifest -> {tweaks_dest}")
 
     layouts_path = pg_dir / "layouts.json"
     layouts_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False))
