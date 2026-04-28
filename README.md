@@ -5,6 +5,12 @@ A Claude Code skill that opens a **local design-review playground** for any HTML
 Inspired by — and designed as a natural follow-up to — **[huashu-design](https://github.com/alchaincyf/huashu-design)** by alchaincyf, the HTML deck/prototype generator. But **tweak-design works independently with any HTML layouts** — handcoded, frontend-design output, design-creator skills, web exports. When `huashu-design` is also installed, `tweak-design` auto-offers the bridge in your conversation language — without any manual command memorization.
 
 ```bash
+claude plugin marketplace add valente5000/tweak-design && claude plugin install tweak-design@valente5000-tweak-design
+```
+
+Or any-agent install via [`vercel-labs/skills`](https://github.com/vercel-labs/skills):
+
+```bash
 npx skills add valente5000/tweak-design
 ```
 

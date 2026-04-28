@@ -1,0 +1,23 @@
+{
+  "name": "valente5000-tweak-design",
+  "owner": {
+    "name": "Gui Valente"
+  },
+  "metadata": {
+    "description": "tweak-design — local design-review playground for HTML layouts",
+    "version": "0.4.0"
+  },
+  "plugins": [
+    {
+      "name": "tweak-design",
+      "description": "Open a local design-review playground for any HTML layouts. Designers tweak CSS variables live in a sidebar, drop pin/quadrant annotations, compare up to 3 layouts side-by-side, click any element for a curated mini-editor, then export a structured markdown prompt that flows back into the next agent iteration.",
+      "version": "0.4.0",
+      "author": {
+        "name": "Gui Valente"
+      },
+      "source": "./",
+      "strict": false,
+      "skills": ["./"]
+    }
+  ]
+}
