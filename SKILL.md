@@ -27,7 +27,7 @@ When you (Claude) have just helped the user produce HTML layouts via the `huashu
 
 Trigger the offer when ALL of these are true:
 1. The current or just-prior conversational turn used `huashu-design` to create or refine layouts
-2. The skill `huashu-design` is installed (verify quickly with `ls /Users/valente/.claude/skills/huashu-design/SKILL.md` — file exists ⇒ installed)
+2. The skill `huashu-design` is installed (verify quickly with `ls "$HOME/.claude/skills/huashu-design/SKILL.md"` — file exists ⇒ installed)
 3. The user hasn't already opened a tweak-design playground for this project in the current session
 4. There are at least 2 layouts produced (a single layout doesn't benefit much from the comparison view; for a single layout, only offer if the layouts have meaningful CSS variables to tweak)
 
@@ -45,7 +45,7 @@ The general rule: ask in whatever language the user has been speaking in the con
 **If the user accepts, run the bridge:**
 
 ```bash
-python /Users/valente/.claude/skills/tweak-design/scripts/from-huashu-design.py \
+python "$HOME/.claude/skills/tweak-design/scripts/from-huashu-design.py" \
   --project <project-root>
 ```
 
@@ -92,7 +92,7 @@ Ask the user (or infer from conversation) which HTML files should be loaded. Com
 
 Run the init script from the skill:
 ```bash
-python /Users/valente/.claude/skills/tweak-design/scripts/init-playground.py \
+python "$HOME/.claude/skills/tweak-design/scripts/init-playground.py" \
   --project <project-root> \
   --layouts <path-to-layout-or-glob> [<path-2> ...] \
   [--tweaks-manifest <path-to-tweaks.json>]
@@ -182,13 +182,32 @@ Annotations only register when **inspect mode is OFF**. Toggle inspect with the 
 
 Each annotation is editable in the sidebar list. All annotations + tweaks auto-save to localStorage on every change. The "Save .json" button writes a portable `session.json` that survives across browsers and machines.
 
+## Synthesize the manifest yourself before bootstrapping
+
+**You (the agent — Claude Code, Codex, or any other coding assistant) are the synthesizer.** This skill ships no LLM-calling code on purpose: a script invoked headlessly cannot share the calling agent's auth (no shared API key, no shared session), and we don't want the skill to require an `ANTHROPIC_API_KEY` env var to be useful. The right place to do the analysis is your own context, where you already have model access.
+
+**When to synthesize:** Before running `from-huashu-design.py` or `init-playground.py` for layouts that have **no `tweaks.json`** in the project root (and especially when no `brand-spec.md` exists either — the regex fallback in `derive_tweaks_from_brand_spec` only captures colors).
+
+**How to synthesize, in 4 steps:**
+
+1. **Read the layout HTMLs.** Open up to 6 of them; cap each at ~50KB if huge. Pay attention to the `<style>` blocks: which CSS custom properties are declared in `:root`, and (more importantly) which are **actually consumed** via `var(--x)` in the rest of the CSS. Hardcoded values that aren't behind a var won't be tweakable as `size_tokens` — declaring a slider for them produces a no-op control.
+2. **Read `references/tweaks-manifest-spec.md`** — the canonical schema. Match it.
+3. **Author a `tweaks.json`** at `<project-root>/tweaks.json` (NOT inside `playground/` — the bridge will copy it from the project root automatically). Aim for:
+   - **`color_tokens`** for every meaningful CSS color var, with `applies_to` set per layout when colors differ between variants.
+   - **`size_tokens`** ONLY for vars genuinely consumed by the CSS (otherwise skip; don't pollute the sidebar with sliders that do nothing).
+   - **`selects`** for either/or design decisions where you can map each option to concrete CSS-var changes — these are huge UX wins (palette swaps, layout-direction toggles, density modes).
+   - **`element_tweaks`** (CRITICAL) — for every visual anchor you can identify: hero headline, story headline, byline, tag/eyebrow, CTA, accent bar, image frame, masthead, footer. For each, list ONLY the CSS props that make design sense (e.g., `font-size + font-weight + letter-spacing + color` for a headline, not `display`/`position`). These work via the inspector mini-editor and apply via inline style — they always work, even when the layout uses no CSS vars.
+4. **Bootstrap.** Run `from-huashu-design.py --project <root>` (or `init-playground.py` directly). The bridge will detect `<project>/tweaks.json` and pass it through to the playground.
+
+**Why this design:** earlier versions of this skill tried to invoke the `claude` CLI via subprocess to do the synthesis. That broke for any user without `ANTHROPIC_API_KEY` set headlessly, and produced a confusing failure mode. Putting the synthesis where the agent already lives — your conversation — is more reliable, runs in any agent (Claude Code / Codex / Cursor / etc.), and gives you the full context to make better calls than a one-shot CLI invocation could.
+
 ## Defaults: ask the designer first, measure as fallback, never invent
 
-tweak-design has **no opinions** of its own about which design tokens or which elements should be tweakable. Picking those is a design-system decision, not a tool decision. The order of trust is:
+The trust order for the manifest, summarized:
 
-1. **(Best) Ask the design-creator skill.** If the layouts came from a design-creator skill (e.g., `huashu-design`), that skill should declare a `tweaks.json` listing the meaningful color tokens, size tokens, selects, and `element_tweaks` (which selectors are worth exposing in the inspector and which CSS props are meaningful for each). Before opening the playground for layouts produced by another skill, prefer to invoke that skill to author or refresh the manifest. The design-creator knows what matters; tweak-design doesn't.
-2. **(Fallback) Measure the loaded HTML.** When no `tweaks.json` is present and there's no design-creator skill to ask, scan the layouts for CSS custom properties and **rank them by reference frequency** (`var(--x)` count across all loaded HTML). Top N are surfaced as auto-detected tokens. For element_tweaks fallback: pick elements with the highest density of inline/embedded CSS rules (most-styled = most-designed = most-relevant to expose).
-3. **(Last resort) Generic neutral controls.** Only when neither (1) nor (2) yields useful signal, fall back to a tiny neutral default set (font-size, color, padding) on a single placeholder selector — clearly labeled as fallback so the user knows the tool is guessing.
+1. **(Best) Author the manifest yourself, as the agent.** See "Synthesize the manifest yourself" above. You read the layouts, write `<project>/tweaks.json`, then bootstrap.
+2. **(Fallback) Measure the loaded HTML at runtime.** When no `tweaks.json` is present, the playground scans the layouts for CSS custom properties and ranks them by reference frequency (`var(--x)` count). Top N are surfaced as auto-detected tokens. This handles the "I forgot to write a manifest" case but loses size_tokens / selects / element_tweaks.
+3. **(Last resort) Generic neutral controls.** When neither (1) nor (2) yields useful signal, fall back to a tiny neutral default set (font-size, color, padding) on a single placeholder selector — clearly labeled as fallback so the user knows the tool is guessing.
 
 **Never** inject specific brand colors, brand names, or pre-baked design opinions. The playground UI's own accent color is also derived from the loaded design's first color token at runtime — the tool wears the design system it is reviewing, not the other way around.
 
@@ -225,7 +244,7 @@ Element overrides also follow per-layout scoping (they default to "this layout o
 The skill ships with a tiny self-test in `assets/playground-template/_example/`. From a fresh shell:
 
 ```bash
-cd /Users/valente/.claude/skills/tweak-design/assets/playground-template/_example
+cd "$HOME/.claude/skills/tweak-design/assets/playground-template/_example"
 python ../server.py
 ```
 
