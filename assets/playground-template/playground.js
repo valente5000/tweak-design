@@ -621,11 +621,31 @@ function pushTweaksToPane(paneIdx) {
   const layoutId = state.paneLayouts[paneIdx];
   const eff = effectiveTweaks(layoutId);
   const vars = {};
-  for (const t of (state.tweaksDef.color_tokens || [])) vars[t.var] = eff[t.var];
-  for (const t of (state.tweaksDef.size_tokens || []))  vars[t.var] = `${eff[t.var]}${t.unit || ''}`;
+  // Application order matters: when a select's `css` and a color/size token
+  // both define the same CSS var, naive flat assign produced two regressions
+  //   (a) select.css always wins (color picker feels broken)
+  //   (b) color_token defaults always win (palette select can't change bg)
+  // The 2-step pipeline below fixes both:
+  //   1. Selects fill the var pool first (palette presets are baseline)
+  //   2. Color/size tokens fill ONLY for vars not covered by a select,
+  //      UNLESS the user explicitly overrode them (perLayout / _global) —
+  //      in which case the user's pick always wins.
+  const layoutOverrides = state.tweakValues.perLayout?.[layoutId] || {};
+  const globalOverrides = state.tweakValues._global || {};
+
   for (const sel of (state.tweaksDef.selects || [])) {
     const opt = sel.options.find(o => o.value === eff[sel.id]);
     if (opt && opt.css) Object.assign(vars, opt.css);
+  }
+  for (const t of (state.tweaksDef.color_tokens || [])) {
+    const userVal = layoutOverrides[t.var] ?? globalOverrides[t.var];
+    if (userVal !== undefined) vars[t.var] = userVal;
+    else if (!(t.var in vars)) vars[t.var] = eff[t.var];
+  }
+  for (const t of (state.tweaksDef.size_tokens || [])) {
+    const userVal = layoutOverrides[t.var] ?? globalOverrides[t.var];
+    if (userVal !== undefined) vars[t.var] = `${userVal}${t.unit || ''}`;
+    else if (!(t.var in vars)) vars[t.var] = `${eff[t.var]}${t.unit || ''}`;
   }
   postShim(frame, { type: 'tweak:apply', vars });
 }
