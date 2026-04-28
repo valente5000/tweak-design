@@ -111,7 +111,7 @@ Behavior:
 
 ### Advanced: rule-level patches
 
-If a select option needs more than CSS variable changes (e.g., toggle a body class), use the `rule` field instead of (or alongside) `css`:
+If a select option needs more than CSS variable changes (e.g., toggle a body class, swap keyframes, scope a media query, decorate a single selector), use the `rule` field instead of (or alongside) `css`:
 
 ```json
 {
@@ -120,6 +120,20 @@ If a select option needs more than CSS variable changes (e.g., toggle a body cla
   "rule": "body { --gutter: 64px; } .cover__title { font-size: 80px; }"
 }
 ```
+
+The raw CSS string lands in a dedicated `<style id="__tweak_design_rules">` element inside each iframe; switching to a different option replaces the contents wholesale. Available since playground v0.4.1. Multiple selects with `rule` concatenate their active option's CSS — order is the manifest order, with later rules overriding earlier ones via normal CSS cascade rules.
+
+For an executable example see `assets/playground-template/_example/tweaks.json` → the `demo-decoration` select toggles underline / outline via raw CSS rules.
+
+## Resolution order — selects vs tokens (cascade)
+
+When a select's `css` and an individual `color_token` / `size_token` declare the **same** CSS variable, the playground resolves conflicts in this order (highest priority first):
+
+1. **User explicit override** — anything written to `state.tweakValues.perLayout[lid][var]` or `state.tweakValues._global[var]` via the sidebar control. The user always wins.
+2. **Select's active option `css`** — palette presets fill the var pool first, providing the baseline for vars not pinned by the user.
+3. **Manifest default for the token** — used only when neither the user nor any select touched the var.
+
+Practical consequence: a manifest can declare `color_tokens` for fine-grained pickers AND `selects` for palette presets that operate on the same vars, and they compose intuitively — the user can preset a palette, then nudge an individual color, and that nudge sticks. The `rule` field is independent of this cascade — it always applies last via the dedicated `__tweak_design_rules` style element.
 
 ## ElementTweak (v2)
 
