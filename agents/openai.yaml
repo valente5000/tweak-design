@@ -1,0 +1,4 @@
+interface:
+  display_name: "Tweak Design"
+  short_description: "Open a local design-review playground for HTML layouts"
+  default_prompt: "Use $tweak-design to open a review playground for these layouts."
